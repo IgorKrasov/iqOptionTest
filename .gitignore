@@ -6,3 +6,9 @@
 /simplecache/vendor/
 !/simplecache/vendor/vendor.json
 /balancer/.idea/
+.DS_Store
+
+.idea/
+
+
+

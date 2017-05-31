@@ -5,10 +5,13 @@ import (
 	"runtime"
 	"sync"
 	"time"
+	"os"
+	"encoding/gob"
 )
 
 type item interface {
 	getExpired() int64
+	getObject() interface{}
 }
 
 type simpleItem struct {
@@ -17,12 +20,12 @@ type simpleItem struct {
 }
 
 type listItem struct {
-	listObject []interface{}
+	object []interface{}
 	expired    int64
 }
 
 type dictItem struct {
-	dictObject map[string]interface{}
+	object map[string]interface{}
 	expired    int64
 }
 
@@ -30,34 +33,66 @@ func (si simpleItem) getExpired() int64 {
 	return si.expired
 }
 
+func (si simpleItem) getObject() interface{} {
+	return si.object
+}
+
 func (li listItem) getExpired() int64 {
 	return li.expired
+}
+
+func (li listItem) getObject() interface{} {
+	return li.object
 }
 
 func (di dictItem) getExpired() int64 {
 	return di.expired
 }
 
+func (di dictItem) getObject() interface{} {
+	return di.object
+}
+
 type cache struct {
 	items                 map[string]item
 	mu                    sync.RWMutex
 	janitor               *janitor
+	recorder	      *recorder
 	ExpiredTimeMultiplier time.Duration
 }
 
-func NewCache(interval time.Duration) *cache {
+func newCache(interval time.Duration, items map[string]item) *cache {
 	if interval == 0 {
-		interval = time.Duration(10 * time.Millisecond)
+		interval = time.Duration(50 * time.Millisecond)
 	}
 
 	c := &cache{
-		items: make(map[string]item),
+		items: items,
 		ExpiredTimeMultiplier: time.Second,
 	}
 	runJanitor(c, interval)
+	runRecorder(c, 5 * time.Second)
 	runtime.SetFinalizer(c, stopJanitor)
 
 	return c
+}
+
+func newCacheFrom(interval time.Duration, fname string) *cache {
+	fp, err := os.Open(fname)
+
+	if err != nil {
+		println("can't load file ", fname)
+		return newCache(interval, make(map[string]item))
+	}
+	defer fp.Close()
+
+	dec := gob.NewDecoder(fp)
+	items := map[string]item{}
+	err = dec.Decode(&items)
+	if err != nil {
+		return newCache(interval, make(map[string]item))
+	}
+	return newCache(interval, items)
 }
 
 func (c *cache) set(key string, value interface{}, duration int) bool {
@@ -134,7 +169,7 @@ func (c *cache) rpush(key string, value interface{}, duration int) (bool, error)
 
 		li := listItem{
 			expired:    e,
-			listObject: object,
+			object: object,
 		}
 
 		c.items[key] = li
@@ -150,7 +185,7 @@ func (c *cache) rpush(key string, value interface{}, duration int) (bool, error)
 		return false, errors.New("invalid object type")
 	}
 
-	li.listObject = append(li.listObject, value)
+	li.object = append(li.object, value)
 	if duration > 0 {
 		li.expired = e
 	}
@@ -187,7 +222,7 @@ func (c *cache) lgetall(key string) ([]interface{}, error) {
 	}
 	c.mu.RUnlock()
 
-	return li.listObject, nil
+	return li.object, nil
 }
 
 func (c *cache) lget(key string, id int) (interface{}, error) {
@@ -206,12 +241,12 @@ func (c *cache) lget(key string, id int) (interface{}, error) {
 		return nil, errors.New("wrong type")
 	}
 
-	if len(li.listObject) < id+1 {
+	if len(li.object) < id + 1 {
 		c.mu.RUnlock()
 		return nil, errors.New("not found")
 	}
 
-	value := li.listObject[id]
+	value := li.object[id]
 
 	c.mu.RUnlock()
 
@@ -236,9 +271,9 @@ func (c *cache) pop(key string) (interface{}, error) {
 	}
 
 	var object interface{}
-	object, li.listObject = li.listObject[len(li.listObject)-1], li.listObject[:len(li.listObject)-1]
+	object, li.object = li.object[len(li.object)-1], li.object[:len(li.object)-1]
 
-	if len(li.listObject) == 0 {
+	if len(li.object) == 0 {
 		c.mu.Unlock()
 		delete(c.items, key)
 		return object, nil
@@ -268,7 +303,7 @@ func (c *cache) hset(key string, value map[string]interface{}, duration int) err
 
 		di := dictItem{
 			expired:    e,
-			dictObject: object,
+			object: object,
 		}
 		c.items[key] = di
 
@@ -284,7 +319,7 @@ func (c *cache) hset(key string, value map[string]interface{}, duration int) err
 	}
 
 	for k, v := range value {
-		di.dictObject[k] = v
+		di.object[k] = v
 	}
 
 	if duration > 0 {
@@ -322,7 +357,7 @@ func (c *cache) hgetall(key string) (map[string]interface{}, error) {
 	}
 	c.mu.RUnlock()
 
-	return di.dictObject, nil
+	return di.object, nil
 }
 
 func (c *cache) hget(key string, dictKey string) (interface{}, error) {
@@ -348,7 +383,7 @@ func (c *cache) hget(key string, dictKey string) (interface{}, error) {
 		return nil, errors.New("wrong type")
 	}
 
-	value, ok := di.dictObject[dictKey]
+	value, ok := di.object[dictKey]
 
 	if !ok {
 		c.mu.RUnlock()
@@ -371,4 +406,21 @@ func (c *cache) DeleteExpired() {
 	}
 
 	c.mu.Unlock()
+}
+
+func (c *cache) Items() map[string]item {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	m := make(map[string]item, len(c.items))
+	now := time.Now().UnixNano()
+	for k, v := range c.items {
+		// "Inlining" of Expired
+		if v.getExpired() > 0 {
+			if now > v.getExpired() {
+				continue
+			}
+		}
+		m[k] = v
+	}
+	return m
 }

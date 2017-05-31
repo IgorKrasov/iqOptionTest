@@ -29,7 +29,7 @@ type App struct {
 
 func NewApp() *App {
 	return &App{
-		cache:  NewCache(time.Duration(1 * time.Second)),
+		cache:  newCacheFrom(time.Duration(1 * time.Second), "test.txt"),
 		Router: mux.NewRouter(),
 	}
 }
