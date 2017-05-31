@@ -1,0 +1,190 @@
+<!-- public/index.html -->
+
+<html>
+<head>
+    <meta http-equiv="content-type" content="text/html; charset=utf-8">
+
+    <title>TODO App</title>
+
+    <!-- Latest compiled and minified CSS -->
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/css/bootstrap.min.css">
+
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/font-awesome/4.6.3/css/font-awesome.min.css">
+
+    <!-- JQuery -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/2.2.4/jquery.min.js"></script>
+
+    <!-- Latest compiled and minified JavaScript -->
+    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/js/bootstrap.min.js"></script>
+
+    <!-- Vue.js -->
+    <script src="http://cdnjs.cloudflare.com/ajax/libs/vue/1.0.24/vue.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/vue-resource/0.7.0/vue-resource.min.js"></script>
+</head>
+<body>
+<div class="container">
+    <div class="row">
+        <div class="col-md-4">
+            <h2>My Tasks</h2>
+            <ul class="list-group">
+                <li class="list-group-item" v-for="key in keys">
+                    {{ key }}
+                    <span class="pull-right">
+                                <button class="btn btn-xs btn-danger" v-on:click="unset($index)">
+                                    <i class="fa fa-trash-o" aria-hidden="true"></i>
+                                </button>
+                            </span>
+                </li>
+            </ul>
+            <div class="input-group">
+                <p>Set</p>
+                <input type="text" class="form-control" placeholder="key" v-on:keyup.enter="set" v-model="newItem.key">
+                <input type="text" class="form-control" placeholder="expired" v-on:keyup.enter="set" v-model="newItem.expired">
+                <input type="text" class="form-control" placeholder="value" v-on:keyup.enter="set" v-model="newItem.value">
+
+                <button class="btn btn-primary" type="button" v-on:click="set">set</button>
+            </div><!-- /input-group -->
+            <div class="input-group">
+                <br />
+                <p>Get</p>
+                <p>{{value}}<p>
+                <input type="text" class="form-control" placeholder="key" v-on:keyup.enter="key" v-model="key">
+                <button class="btn btn-primary" type="button" v-on:click="get">get</button>
+            </div><!-- /input-group -->
+
+            <div class="input-group">
+                <p>rpush</p>
+                <input type="text" class="form-control" placeholder="key" v-on:keyup.enter="set" v-model="newItem.key">
+                <input type="text" class="form-control" placeholder="expired" v-on:keyup.enter="set" v-model="newItem.expired">
+                <input type="text" class="form-control" placeholder="value" v-on:keyup.enter="set" v-model="newItem.value">
+
+                <button class="btn btn-primary" type="button" v-on:click="rpush">rpush</button>
+            </div><!-- /input-group -->
+
+            <div class="input-group">
+                <br />
+                <p>Pop</p>
+                <p>{{value}}<p>
+                <input type="text" class="form-control" placeholder="key" v-on:keyup.enter="key" v-model="key">
+                <button class="btn btn-primary" type="button" v-on:click="pop">pop</button>
+            </div><!-- /input-group -->
+
+        </div>
+    </div>
+</div>
+</body>
+</html>
+
+<!-- public/index.html -->
+
+<script>
+    new Vue({
+        el: 'body',
+
+        data: {
+            keys: [],
+            newItem: {},
+            key: "",
+            value: ""
+        },
+
+        // This is run whenever the page is loaded to make sure we have a current task list
+        created: function() {
+            // Use the vue-resource $http client to fetch data from the /tasks route
+            this.$http.get('/keys').then(function(response) {
+                console.log(response.data)
+                this.keys = response.data ? response.data : []
+            })
+        },
+
+        methods: {
+            set: function() {
+                if (!$.trim(this.newItem.key)) {
+                    this.newItem = {
+                    }
+                    return
+                }
+                expired = Number(this.newItem.expired)
+                this.newItem.expired = expired
+
+                // Post the new task to the /tasks route using the $http client
+                this.$http.post('/set', this.newItem).success(function(response) {
+                    this.keys.push(this.newItem.key)
+                    console.log("created!")
+                    this.newItem = {}
+                }).error(function(error) {
+                    console.log(error)
+                });
+            },
+
+            unset: function(index) {
+                // Use the $http client to delete a task by its id
+                console.log(this.keys[index])
+                this.$http.delete('/unset/' + this.keys[index]).success(function(response) {
+                    this.keys.splice(index, 1)
+                    console.log("Task deleted!")
+                }).error(function(error) {
+                    console.log(error)
+                })
+            },
+
+            get: function() {
+                // Use the $http client to delete a task by its id
+                if (!$.trim(this.key)) {
+                    return
+                }
+
+                console.log(this.key)
+
+                this.$http.get('/get/' + this.key).then(function(response) {
+                    console.log("recived")
+                    console.log(response.data)
+                    this.key = ""
+                    this.value = response.data ? response.data : ""
+                }).error(function(error) {
+                    this.key = ""
+                    this.value = ""
+                    console.log(error)
+                })
+            },
+            rpush: function() {
+                if (!$.trim(this.newItem.key)) {
+                    this.newItem = {
+                    }
+                    return
+                }
+                expired = Number(this.newItem.expired)
+                this.newItem.expired = expired
+
+                // Post the new task to the /tasks route using the $http client
+                this.$http.post('/rpush', this.newItem).success(function(response) {
+                    this.keys.push(this.newItem.key)
+                    console.log("created")
+                    this.newItem = {}
+                }).error(function(error) {
+                    console.log(error)
+                });
+            },
+            pop: function() {
+                // Use the $http client to delete a task by its id
+                if (!$.trim(this.key)) {
+                    return
+                }
+
+                console.log(this.key)
+
+                this.$http.get('/pop/' + this.key).then(function(response) {
+                    console.log("recived")
+                    console.log(response.data)
+                    this.key = ""
+                    this.value = response.data ? response.data : ""
+                }).error(function(error) {
+                    this.key = ""
+                    this.value = ""
+                    console.log(error)
+                })
+            },
+        }
+    })
+</script>

@@ -1,0 +1,22 @@
+version: '2'
+services:
+  balancer:
+    build: ./balancer
+    ports:
+     - "9005:9005"
+    volumes:
+     - ./simplecache:/go/src/github.com/iqOptionTest/balancer
+  cache:
+    build: ./simplecache
+    ports:
+     - "9003:9003"
+    volumes:
+     - ./simplecache:/go/src/github.com/iqOptionTest/simplecache
+  client:
+    build: ./simplecacheclient
+    ports:
+     - "9004:9004"
+    volumes:
+     - ./simplecacheclient:/go/src/github.com/iqOptionTest/simplecacheclient
+    depends_on:
+     - balancer

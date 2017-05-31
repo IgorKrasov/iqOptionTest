@@ -1,0 +1,8 @@
+
+/simplecacheclient/.idea/
+/simplecacheclient/vendor/
+!/simplecacheclient/vendor/vendor.json
+/simplecache/.idea/
+/simplecache/vendor/
+!/simplecache/vendor/vendor.json
+/balancer/.idea/
